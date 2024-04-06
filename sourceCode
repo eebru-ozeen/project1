@@ -1,0 +1,200 @@
+#include <iostream>
+#include <random>
+#include <vector>
+#include <algorithm>
+
+// Define constants
+const int NUM_YEARS = 200;
+const int NUM_QUAESTORS = 20;
+const int NUM_AEDILES = 10;
+const int NUM_PRAETORS = 8;
+const int NUM_CONSULS = 2;
+const int MIN_QUAESTOR_AGE = 30;
+const int MIN_AEDILE_AGE = 36;
+const int MIN_PRAETOR_AGE = 39;
+const int MIN_CONSUL_AGE = 42;
+const int REELECTION_INTERVAL = 10;
+const int STARTING_PSI = 100;
+const int UNFILLED_POSITION_PENALTY = 5;
+const int REELECTION_PENALTY = 10;
+const double LIFE_EXPECTANCY_MEAN = 55.0;
+const double LIFE_EXPECTANCY_STDDEV = 10.0;
+const int LIFE_EXPECTANCY_LOWER_BOUND = 25;
+const int LIFE_EXPECTANCY_UPPER_BOUND = 80;
+const double NEW_CANDIDATES_MEAN = 15.0;
+const double NEW_CANDIDATES_STDDEV = 5.0;
+
+// Define politician structure
+struct Politician {
+    int age;
+    bool isAlive;
+    bool isQuaestor;
+    bool isAedile;
+    bool isPraetor;
+    bool isConsul;
+};
+
+// Function to generate truncated normal distribution
+double truncated_normal(double mean, double stddev, double lower, double upper) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<double> dist(mean, stddev);
+    
+    double val;
+    do {
+        val = dist(gen);
+    } while (val < lower || val > upper);
+    
+    return val;
+}
+
+// Function to simulate election process
+void simulateElection(std::vector<Politician>& politicians, int& psi) {
+    // Count the number of unfilled positions
+    int unfilledPositions = 0;
+    for (const Politician& p : politicians) {
+        if (!p.isQuaestor && !p.isAedile && !p.isPraetor && !p.isConsul) {
+            unfilledPositions++;
+        }
+    }
+    
+    // Update PSI
+    psi -= unfilledPositions * UNFILLED_POSITION_PENALTY;
+    
+    // Shuffle politicians
+    std::shuffle(politicians.begin(), politicians.end(), std::default_random_engine());
+    
+    // Elect new politicians
+    for (Politician& p : politicians) {
+        if (!p.isAlive) continue;
+        
+        if (!p.isQuaestor && p.age >= MIN_QUAESTOR_AGE) {
+            p.isQuaestor = true;
+            break;
+        }
+        else if (p.isQuaestor && !p.isAedile && p.age >= MIN_AEDILE_AGE) {
+            p.isAedile = true;
+            break;
+        }
+        else if (p.isAedile && !p.isPraetor && p.age >= MIN_PRAETOR_AGE) {
+            p.isPraetor = true;
+            break;
+        }
+        else if (p.isPraetor && !p.isConsul && p.age >= MIN_CONSUL_AGE) {
+            p.isConsul = true;
+            break;
+        }
+    }
+}
+
+int main() {
+    // Initialize politicians
+    std::vector<Politician> politicians;
+    std::default_random_engine generator(std::random_device{}());
+    std::normal_distribution<double> newCandidatesDistribution(NEW_CANDIDATES_MEAN, NEW_CANDIDATES_STDDEV);
+    
+    for (int i = 0; i < NUM_QUAESTORS; ++i) {
+        Politician p;
+        p.age = MIN_QUAESTOR_AGE;
+        p.isAlive = true;
+        p.isQuaestor = true;
+        politicians.push_back(p);
+    }
+    
+    // Initialize PSI
+    int psi = STARTING_PSI;
+    
+    // Run simulation
+    for (int year = 1; year <= NUM_YEARS; ++year) {
+        // Simulate election
+        simulateElection(politicians, psi);
+        
+        // Update PSI for re-election penalties
+        if (year % REELECTION_INTERVAL == 0) {
+            psi -= std::count_if(politicians.begin(), politicians.end(), [](const Politician& p) {
+                return p.isConsul;
+            }) * REELECTION_PENALTY;
+        }
+        
+        // Generate new candidates
+        int numNewCandidates = static_cast<int>(newCandidatesDistribution(generator));
+        for (int i = 0; i < numNewCandidates; ++i) {
+            Politician p;
+            p.age = MIN_QUAESTOR_AGE;
+            p.isAlive = true;
+            if (year == 1) {
+                p.isQuaestor = true;
+            }
+            politicians.push_back(p);
+        }
+        
+        // Update politician ages and check for mortality
+        for (Politician& p : politicians) {
+            if (p.isAlive) {
+                p.age++;
+                if (p.age > truncated_normal(LIFE_EXPECTANCY_MEAN, LIFE_EXPECTANCY_STDDEV,
+                                             LIFE_EXPECTANCY_LOWER_BOUND, LIFE_EXPECTANCY_UPPER_BOUND)) {
+                    p.isAlive = false;
+                }
+            }
+        }
+    }
+    
+    // Calculate final fill rates
+    int numQuaestorsFilled = std::count_if(politicians.begin(), politicians.end(), [](const Politician& p) {
+        return p.isQuaestor;
+    });
+    int numAedilesFilled = std::count_if(politicians.begin(), politicians.end(), [](const Politician& p) {
+        return p.isAedile;
+    });
+    int numPraetorsFilled = std::count_if(politicians.begin(), politicians.end(), [](const Politician& p) {
+        return p.isPraetor;
+    });
+    int numConsulsFilled = std::count_if(politicians.begin(), politicians.end(), [](const Politician& p) {
+        return p.isConsul;
+    });
+    
+    // Output results
+    std::cout << "End-of-Simulation PSI: " << psi << std::endl;
+    std::cout << "Annual Fill Rate:" << std::endl;
+    std::cout << "Quaestor: " << static_cast<double>(numQuaestorsFilled) / NUM_YEARS * 100 << "%" << std::endl;
+    std::cout << "Aedile: " << static_cast<double>(numAedilesFilled) / NUM_YEARS * 100 << "%" << std::endl;
+    std::cout << "Praetor: " << static_cast<double>(numPraetorsFilled) / NUM_YEARS * 100 << "%" << std::endl;
+    std::cout << "Consul: " << static_cast<double>(numConsulsFilled) / NUM_YEARS * 100 << "%" << std::endl;
+        std::cout << "Age Distribution:" << std::endl;
+    
+    // Calculate age distribution for each office
+    std::vector<int> agesQuaestor, agesAedile, agesPraetor, agesConsul;
+    for (const Politician& p : politicians) {
+        if (p.isAlive) {
+            if (p.isQuaestor) {
+                agesQuaestor.push_back(p.age);
+            } else if (p.isAedile) {
+                agesAedile.push_back(p.age);
+            } else if (p.isPraetor) {
+                agesPraetor.push_back(p.age);
+            } else if (p.isConsul) {
+                agesConsul.push_back(p.age);
+            }
+        }
+    }
+    
+    // Output age distribution summaries
+    auto printDistributionSummary = [](const std::vector<int>& ages, const std::string& title) {
+        if (!ages.empty()) {
+            double mean = std::accumulate(ages.begin(), ages.end(), 0) / static_cast<double>(ages.size());
+            double minAge = *std::min_element(ages.begin(), ages.end());
+            double maxAge = *std::max_element(ages.begin(), ages.end());
+            std::cout << title << ": Mean=" << mean << ", Min=" << minAge << ", Max=" << maxAge << std::endl;
+        } else {
+            std::cout << title << ": No politicians" << std::endl;
+        }
+    };
+    
+    printDistributionSummary(agesQuaestor, "Quaestor");
+    printDistributionSummary(agesAedile, "Aedile");
+    printDistributionSummary(agesPraetor, "Praetor");
+    printDistributionSummary(agesConsul, "Consul");
+    
+    return 0;
+}
